@@ -1,0 +1,24 @@
+# Сборка .NET
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE и редакторы
+.idea/
+.vs/
+.vscode/
+*.DotSettings.user
+.DS_Store
+*.swp
+
+# Секреты: пароли и строки подключения с реальными значениями не коммитим
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.*.local.json

@@ -1,5 +1,6 @@
 @page "/manager/products/new"
 @attribute [Authorize(Roles = RoleNames.Manager)]
+@rendermode InteractiveServer
 @inject CatalogService Catalog
 @inject ProductService Products
 @inject NavigationManager Navigation

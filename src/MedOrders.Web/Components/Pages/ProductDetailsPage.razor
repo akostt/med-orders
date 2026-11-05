@@ -1,5 +1,6 @@
 @page "/product/{Id:int}"
 @attribute [Authorize]
+@rendermode InteractiveServer
 @inject CatalogService Catalog
 @inject OrderService Orders
 @inject PricingSettings Pricing

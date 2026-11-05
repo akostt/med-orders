@@ -1,0 +1,44 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+<header class="topbar">
+    <a class="brand" href="/">
+        <span class="brand-mark">+</span>
+        <span>МедЗаказ</span>
+    </a>
+    <form class="search" @onsubmit="OpenSearchResults" @onsubmit:preventDefault>
+        <input type="search" placeholder="Поиск по названию или артикулу"
+               @bind="_searchText" @bind:event="oninput" />
+    </form>
+    <AuthorizeView>
+        <Authorized>
+            <div class="user-block">
+                <span class="user">@context.User.GetFullName() · @context.User.GetRoleName()</span>
+                <form method="post" action="/account/logout" class="logout">
+                    <AntiforgeryToken />
+                    <button class="link" type="submit">Выйти</button>
+                </form>
+            </div>
+        </Authorized>
+        <NotAuthorized>
+            <a class="user" href="/account/login">Войти</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</header>
+
+<main class="page">
+    @Body
+</main>
+
+@code {
+    private string? _searchText;
+
+    /// <summary>Открывает каталог с результатами поиска из строки в шапке.</summary>
+    private void OpenSearchResults()
+    {
+        var target = string.IsNullOrWhiteSpace(_searchText)
+            ? "/"
+            : $"/?search={Uri.EscapeDataString(_searchText.Trim())}";
+        Navigation.NavigateTo(target);
+    }
+}

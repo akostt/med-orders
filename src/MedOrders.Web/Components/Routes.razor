@@ -1,0 +1,24 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <h1>Недостаточно прав</h1>
+                    <p>Эта страница доступна только для другой роли. <a href="/">Вернуться в каталог</a></p>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <h1>Страница не найдена</h1>
+            <p><a href="/">Вернуться в каталог</a></p>
+        </LayoutView>
+    </NotFound>
+</Router>

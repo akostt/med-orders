@@ -1,0 +1,201 @@
+@page "/product/{Id:int}"
+@attribute [Authorize]
+@inject CatalogService Catalog
+@inject OrderService Orders
+@inject PricingSettings Pricing
+@inject ILogger<ProductDetailsPage> Logger
+
+@if (_product is null)
+{
+    <p>Товар не найден. <a href="/">Вернуться в каталог</a></p>
+}
+else
+{
+    <nav class="breadcrumbs">
+        <a href="/">Каталог</a> / @_product.CategoryName / @_product.Name
+    </nav>
+
+    <div class="product-layout">
+        <section class="card">
+            <div class="product-head">
+                <div class="photo big">фото</div>
+                <div>
+                    <h1>@_product.Name</h1>
+                    <div class="muted">Арт. @_product.Article · производитель: «@_product.ManufacturerName»</div>
+                    <div class="tags">
+                        <StockBadge Available="@_product.AvailableQuantity" />
+                        @if (_product.RegistrationNumber is not null)
+                        {
+                            <span class="tag tag-teal">Рег. удостоверение: @_product.RegistrationNumber</span>
+                        }
+                    </div>
+                    <div class="line"><b>Гарантия:</b> @_product.WarrantyMonths месяцев</div>
+                    <div class="line"><b>Хранение:</b> @(_product.StorageConditions ?? "не указано")</div>
+                    <div class="line"><b>Срок годности:</b> @_product.ShelfLifeMonths месяцев</div>
+                </div>
+            </div>
+
+            <h2>Технические характеристики</h2>
+            <table class="specs">
+                @foreach (var row in _specifications.Where(specification => specification.Name is not null))
+                {
+                    <tr>
+                        <th>@row.Name</th>
+                        <td>@row.Value</td>
+                    </tr>
+                }
+            </table>
+            @foreach (var note in _specifications.Where(specification => specification.Name is null))
+            {
+                <p class="muted">@note.Value</p>
+            }
+        </section>
+
+        <aside class="card order">
+            <h2>Оформление заказа</h2>
+
+            <div class="filter-label">Количество</div>
+            <div class="stepper">
+                <button class="btn btn-outline" disabled="@(_product.AvailableQuantity == 0)" @onclick="DecreaseQuantity">−</button>
+                <span class="qty">@_quantity</span>
+                <button class="btn btn-outline" disabled="@(_product.AvailableQuantity == 0)" @onclick="IncreaseQuantity">+</button>
+            </div>
+            <FieldError Field="Quantity" Errors="_fieldErrors" />
+
+            <div class="filter-label">Адрес доставки *</div>
+            <input class="input @(_fieldErrors.ContainsKey("DeliveryAddress") ? "input-error" : "")"
+                   placeholder="Укажите адрес доставки" @bind="_deliveryAddress" />
+            <FieldError Field="DeliveryAddress" Errors="_fieldErrors" />
+
+            <div class="filter-label">Способ доставки</div>
+            @foreach (var method in DeliveryOptions)
+            {
+                <label class="radio">
+                    <input type="radio" name="delivery" checked="@(_deliveryMethod == method)"
+                           @onchange="() => _deliveryMethod = method" />
+                    @DeliveryLabel(method) — @MoneyFormatter.Format(Pricing.GetDeliveryCost(method)) ₽
+                </label>
+            }
+
+            <div class="filter-label">Комментарий (необязательно)</div>
+            <input class="input" placeholder="Например: вход со двора, 3 этаж" @bind="_notes" />
+
+            <div class="totals">
+                <div><span>Стоимость: @_quantity × @MoneyFormatter.Format(_product.Price) ₽</span><b>@MoneyFormatter.Format(CurrentTotals.Subtotal) ₽</b></div>
+                <div><span>Скидка @NewOrderDiscountPercent %</span><b>@MoneyFormatter.Format(CurrentTotals.Discount) ₽</b></div>
+                <div><span>Налог (НДС @Pricing.VatRatePercent %)</span><b>@MoneyFormatter.Format(CurrentTotals.Vat) ₽</b></div>
+                <div><span>Доставка (@DeliveryLabel(_deliveryMethod))</span><b>@MoneyFormatter.Format(CurrentTotals.DeliveryCost) ₽</b></div>
+                <div class="grand"><span>Итого к оплате</span><b>@MoneyFormatter.Format(CurrentTotals.Total) ₽</b></div>
+            </div>
+
+            @if (_errorMessage is not null)
+            {
+                <div class="alert">@_errorMessage</div>
+            }
+            @if (_successMessage is not null)
+            {
+                <div class="alert alert-success">@_successMessage</div>
+            }
+
+            <button class="btn btn-primary btn-block" disabled="@(_product.AvailableQuantity == 0)" @onclick="SubmitOrderAsync">
+                Оформить заказ
+            </button>
+        </aside>
+    </div>
+}
+
+@code {
+    /// <summary>Идентификатор товара из адреса страницы.</summary>
+    [Parameter]
+    public int Id { get; set; }
+
+    /// <summary>Состояние входа текущего пользователя, передаётся из каскадного провайдера.</summary>
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private static readonly DeliveryMethod[] DeliveryOptions =
+    [
+        DeliveryMethod.Courier,
+        DeliveryMethod.TransportCompany,
+        DeliveryMethod.Pickup,
+    ];
+
+    private ProductDetails? _product;
+    private IReadOnlyList<SpecificationRow> _specifications = [];
+    private int _quantity = 1;
+    private DeliveryMethod _deliveryMethod = DeliveryMethod.Courier;
+    private string _deliveryAddress = string.Empty;
+    private string _notes = string.Empty;
+    private Dictionary<string, string> _fieldErrors = new();
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    /// <summary>Скидку на новый заказ назначает менеджер, при оформлении она равна нулю.</summary>
+    private const decimal NewOrderDiscountPercent = 0m;
+
+    /// <summary>Итог заказа при текущем количестве и способе доставки.</summary>
+    private OrderTotals CurrentTotals => OrderTotalsCalculator.Calculate(
+        _product!.Price, _quantity, NewOrderDiscountPercent, Pricing.VatRatePercent, Pricing.GetDeliveryCost(_deliveryMethod));
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            _product = await Catalog.GetProductDetailsAsync(Id);
+            _specifications = ProductSpecificationParser.Parse(_product?.Specifications);
+            _quantity = Math.Clamp(_quantity, 1, Math.Max(1, _product?.AvailableQuantity ?? 1));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Не удалось загрузить карточку товара {ProductId}", Id);
+            _errorMessage = "Не удалось загрузить карточку товара. Проверьте подключение к базе данных.";
+        }
+    }
+
+    private void DecreaseQuantity() => _quantity = Math.Max(1, _quantity - 1);
+
+    private void IncreaseQuantity() =>
+        _quantity = Math.Min(Math.Max(1, _product?.AvailableQuantity ?? 1), _quantity + 1);
+
+    /// <summary>Отправляет заказ в сервис. Ошибки полей подсвечиваются, ошибки остатка показываются текстом.</summary>
+    private async Task SubmitOrderAsync()
+    {
+        _fieldErrors = new Dictionary<string, string>();
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var userId = (await AuthenticationStateTask!).User.GetUserId();
+            var orderNumber = await Orders.CreateOrderAsync(
+                new CreateOrderCommand(userId, Id, _quantity, _deliveryMethod, _deliveryAddress, _notes));
+
+            _successMessage = $"Заказ {orderNumber} оформлен. Статус: «принят».";
+            _quantity = 1;
+            await OnParametersSetAsync();
+        }
+        catch (FormValidationException exception)
+        {
+            _fieldErrors = new Dictionary<string, string>(exception.FieldErrors);
+        }
+        catch (BusinessRuleException exception)
+        {
+            // Недостаток на складе: остаток обновится, пользователь уменьшит количество.
+            _errorMessage = exception.Message;
+            await OnParametersSetAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Не удалось создать заказ для товара {ProductId}", Id);
+            _errorMessage = "Не удалось оформить заказ. Попробуйте позже.";
+        }
+    }
+
+    private static string DeliveryLabel(DeliveryMethod method) => method switch
+    {
+        DeliveryMethod.Courier => "Курьер (2–3 дня)",
+        DeliveryMethod.TransportCompany => "Транспортная компания",
+        _ => "Самовывоз",
+    };
+}

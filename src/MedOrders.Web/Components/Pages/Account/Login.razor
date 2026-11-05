@@ -1,0 +1,42 @@
+@page "/account/login"
+@layout AuthLayout
+
+<div class="card auth-card">
+    <h1>Вход в систему</h1>
+
+    @if (ErrorMessage is not null)
+    {
+        <div class="alert">@ErrorMessage</div>
+    }
+    @if (Registered == "1")
+    {
+        <div class="alert alert-success">Регистрация завершена. Войдите в систему.</div>
+    }
+
+    <form method="post" action="/account/authenticate">
+        <AntiforgeryToken />
+        <div class="filter-label">Логин</div>
+        <input class="input" name="Login" autocomplete="username" required />
+        <div class="filter-label">Пароль</div>
+        <input class="input" type="password" name="Password" autocomplete="current-password" required />
+        <button class="btn btn-primary btn-block" type="submit">Войти</button>
+    </form>
+
+    <p class="muted">Нет учётной записи? <a href="/account/register">Регистрация клиента</a></p>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Registered { get; set; }
+
+    private string? ErrorMessage => Error switch
+    {
+        "invalid" => "Неверный логин или пароль.",
+        "blocked" => "Учётная запись заблокирована. Обратитесь к администратору.",
+        "locked" => "Слишком много неудачных попыток. Повторите вход через несколько минут.",
+        _ => null,
+    };
+}

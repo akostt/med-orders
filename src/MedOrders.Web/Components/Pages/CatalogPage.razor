@@ -1,0 +1,212 @@
+@page "/"
+@attribute [Authorize]
+@inject CatalogService Catalog
+@inject ILogger<CatalogPage> Logger
+
+<div class="catalog-layout">
+    <aside class="card filters">
+        <h2>Фильтры</h2>
+
+        <div class="filter-label">Категория</div>
+        @foreach (var category in _categories)
+        {
+            <label class="check">
+                <input type="checkbox" checked="@(_draftCategoryId == category.Id)"
+                       @onchange="changeEvent => SelectCategory(category.Id, changeEvent.Value is bool isChecked && isChecked)" />
+                @category.Name
+            </label>
+        }
+
+        <div class="filter-label">Цена, ₽</div>
+        <div class="row">
+            <input class="input" type="number" min="0" placeholder="от" @bind="_draftMinPrice" />
+            <input class="input" type="number" min="0" placeholder="до" @bind="_draftMaxPrice" />
+        </div>
+
+        <label class="check"><input type="checkbox" @bind="_draftOnlyInStock" /> Только в наличии</label>
+        <label class="check"><input type="checkbox" @bind="_draftOnlyWithRegistration" /> Есть рег. удостоверение</label>
+
+        <div class="filter-label">Производитель</div>
+        <select class="input" @bind="_draftManufacturerId">
+            <option value="">Все производители</option>
+            @foreach (var manufacturer in _manufacturers)
+            {
+                <option value="@manufacturer.Id">@manufacturer.Name</option>
+            }
+        </select>
+
+        <div class="row buttons">
+            <button class="btn btn-outline" @onclick="ResetFiltersAsync">Сбросить</button>
+            <button class="btn btn-primary" @onclick="ApplyFiltersAsync">Применить</button>
+        </div>
+    </aside>
+
+    <section class="catalog-main">
+        <h1>Каталог товаров</h1>
+        <div class="subtitle-row">
+            <span class="muted">@_subtitle</span>
+            <select class="input sort" @bind="_draftSortOrder">
+                <option value="ByName">Сортировка: по названию</option>
+                <option value="PriceAscending">Сортировка: по цене ↑</option>
+                <option value="PriceDescending">Сортировка: по цене ↓</option>
+            </select>
+        </div>
+
+        @if (_errorMessage is not null)
+        {
+            <div class="alert">@_errorMessage</div>
+        }
+        else if (_result is null)
+        {
+            <p class="muted">Загрузка…</p>
+        }
+        else if (_result.Items.Count == 0)
+        {
+            <div class="card empty">По вашему запросу ничего не найдено. Измените фильтры или строку поиска.</div>
+        }
+        else
+        {
+            <div class="grid">
+                @foreach (var product in _result.Items)
+                {
+                    <article class="product-card">
+                        <div class="photo">фото</div>
+                        <div class="product-name">@product.Name</div>
+                        <div class="muted">Арт. @product.Article</div>
+                        <div class="price">@MoneyFormatter.Format(product.Price) ₽</div>
+                        <div class="tags">
+                            <StockBadge Available="@product.AvailableQuantity" />
+                            @if (product.HasRegistrationCertificate)
+                            {
+                                <span class="tag tag-teal">РУ</span>
+                            }
+                            @if (product.HasConformityCertificate)
+                            {
+                                <span class="tag tag-teal">СС</span>
+                            }
+                        </div>
+                        @if (product.AvailableQuantity == 0)
+                        {
+                            <button class="btn btn-disabled" disabled>Нет в наличии</button>
+                        }
+                        else
+                        {
+                            <a class="btn btn-primary" href="/product/@product.Id">В корзину</a>
+                        }
+                    </article>
+                }
+            </div>
+
+            <div class="pager">
+                <button class="btn btn-outline" disabled="@(_result.PageNumber <= 1)"
+                        @onclick="() => GoToPageAsync(_result.PageNumber - 1)">← Назад</button>
+                <span>Стр. @_result.PageNumber из @_result.TotalPages</span>
+                <button class="btn btn-outline" disabled="@(_result.PageNumber >= _result.TotalPages)"
+                        @onclick="() => GoToPageAsync(_result.PageNumber + 1)">Далее →</button>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    /// <summary>Строка поиска из шапки сайта (адрес вида /?search=текст).</summary>
+    [SupplyParameterFromQuery]
+    public string? Search { get; set; }
+
+    private IReadOnlyList<SelectItem> _categories = [];
+    private IReadOnlyList<SelectItem> _manufacturers = [];
+    private CatalogResult? _result;
+    private string? _errorMessage;
+
+    private int? _draftCategoryId;
+    private decimal? _draftMinPrice;
+    private decimal? _draftMaxPrice;
+    private int? _draftManufacturerId;
+    private bool _draftOnlyInStock;
+    private bool _draftOnlyWithRegistration;
+    private CatalogSortOrder _draftSortOrder = CatalogSortOrder.ByName;
+
+    private CatalogFilter _appliedFilter = new();
+
+    /// <summary>Подпись над списком: количество найденных товаров и выбранная категория.</summary>
+    private string _subtitle
+    {
+        get
+        {
+            if (_result is null)
+            {
+                return string.Empty;
+            }
+
+            var text = $"Найдено {_result.TotalCount} позиций";
+            var selectedCategory = _categories.FirstOrDefault(category => category.Id == _appliedFilter.CategoryId);
+            return selectedCategory is null ? text : $"{text} · категория «{selectedCategory.Name}»";
+        }
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await Catalog.GetCategoriesAsync();
+        _manufacturers = await Catalog.GetManufacturersAsync();
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        _appliedFilter = _appliedFilter with { SearchText = Search, PageNumber = 1 };
+        await LoadProductsAsync();
+    }
+
+    private void SelectCategory(int categoryId, bool isChecked) =>
+        _draftCategoryId = isChecked ? categoryId : null;
+
+    private async Task ApplyFiltersAsync()
+    {
+        _appliedFilter = new CatalogFilter
+        {
+            SearchText = Search,
+            CategoryId = _draftCategoryId,
+            ManufacturerId = _draftManufacturerId,
+            MinPrice = _draftMinPrice,
+            MaxPrice = _draftMaxPrice,
+            OnlyInStock = _draftOnlyInStock,
+            OnlyWithRegistration = _draftOnlyWithRegistration,
+            SortOrder = _draftSortOrder,
+        };
+
+        await LoadProductsAsync();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _draftCategoryId = null;
+        _draftManufacturerId = null;
+        _draftMinPrice = null;
+        _draftMaxPrice = null;
+        _draftOnlyInStock = false;
+        _draftOnlyWithRegistration = false;
+        _draftSortOrder = CatalogSortOrder.ByName;
+        await ApplyFiltersAsync();
+    }
+
+    private async Task GoToPageAsync(int pageNumber)
+    {
+        _appliedFilter = _appliedFilter with { PageNumber = pageNumber };
+        await LoadProductsAsync();
+    }
+
+    private async Task LoadProductsAsync()
+    {
+        try
+        {
+            _result = await Catalog.SearchProductsAsync(_appliedFilter);
+            _errorMessage = null;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Не удалось загрузить каталог из базы данных");
+            _errorMessage = "Не удалось загрузить каталог. Проверьте подключение к базе данных и обновите страницу.";
+        }
+    }
+}

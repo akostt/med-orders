@@ -1,0 +1,79 @@
+@page "/account/register"
+@layout AuthLayout
+@inject AccountService Accounts
+@inject NavigationManager Navigation
+@inject ILogger<Register> Logger
+
+<div class="card auth-card">
+    <h1>Регистрация клиента</h1>
+
+    @if (_formError is not null)
+    {
+        <div class="alert">@_formError</div>
+    }
+
+    <div class="filter-label">ФИО *</div>
+    <input class="input @Invalid("FullName")" @bind="_form.FullName" />
+    <FieldError Field="FullName" Errors="_errors" />
+
+    <div class="filter-label">Логин *</div>
+    <input class="input @Invalid("Login")" @bind="_form.Login" autocomplete="username" />
+    <FieldError Field="Login" Errors="_errors" />
+
+    <div class="filter-label">Email *</div>
+    <input class="input @Invalid("Email")" type="email" @bind="_form.Email" />
+    <FieldError Field="Email" Errors="_errors" />
+
+    <div class="filter-label">Адрес (юридический или для доставки) *</div>
+    <input class="input @Invalid("Address")" @bind="_form.Address" />
+    <FieldError Field="Address" Errors="_errors" />
+
+    <div class="filter-label">Пароль *</div>
+    <input class="input @Invalid("Password")" type="password" @bind="_form.Password" autocomplete="new-password" />
+    <FieldError Field="Password" Errors="_errors" />
+    <div class="muted hint">Не менее 8 символов, заглавные и строчные буквы, цифры.</div>
+
+    <button class="btn btn-primary btn-block" @onclick="SubmitAsync">Зарегистрироваться</button>
+
+    <p class="muted">Уже есть учётная запись? <a href="/account/login">Войти</a></p>
+</div>
+
+@code {
+    private sealed class RegisterForm
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Login { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private readonly RegisterForm _form = new();
+    private Dictionary<string, string> _errors = new();
+    private string? _formError;
+
+    private string Invalid(string field) => _errors.ContainsKey(field) ? "input-error" : string.Empty;
+
+    private async Task SubmitAsync()
+    {
+        _errors = new Dictionary<string, string>();
+        _formError = null;
+
+        try
+        {
+            await Accounts.RegisterClientAsync(new RegisterClientCommand(
+                _form.Login, _form.Password, _form.FullName, _form.Email, _form.Address));
+            Navigation.NavigateTo("/account/login?registered=1", forceLoad: true);
+        }
+        catch (FormValidationException ex)
+        {
+            _errors = new Dictionary<string, string>(ex.FieldErrors);
+            _formError = "Исправьте выделенные поля.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Не удалось зарегистрировать клиента {Login}", _form.Login);
+            _formError = "Не удалось зарегистрироваться. Попробуйте позже.";
+        }
+    }
+}

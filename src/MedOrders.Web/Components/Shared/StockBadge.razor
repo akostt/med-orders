@@ -1,0 +1,16 @@
+<span class="badge @_css">@_text</span>
+
+@code {
+    private const int LowStockThreshold = 3;
+
+    [Parameter, EditorRequired]
+    public int Available { get; set; }
+
+    private string _css => Available == 0 ? "badge-red" : Available <= LowStockThreshold ? "badge-yellow" : "badge-green";
+
+    private string _text => Available == 0
+        ? "Нет в наличии"
+        : Available <= LowStockThreshold
+            ? $"Мало: {Available} шт."
+            : $"В наличии: {Available}";
+}

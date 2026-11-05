@@ -1,0 +1,190 @@
+@page "/manager/products/new"
+@attribute [Authorize(Roles = RoleNames.Manager)]
+@inject CatalogService Catalog
+@inject ProductService Products
+@inject NavigationManager Navigation
+@inject ILogger<CreateProductPage> Logger
+
+<nav class="breadcrumbs"><a href="/">Каталог</a> / Новый товар</nav>
+<h1>Новый товар</h1>
+<p class="muted">Заполните карточку, прикрепите регистрационное удостоверение или сертификат и сохраните. Товар сразу появится в каталоге.</p>
+
+@if (_formErrorMessage is not null)
+{
+    <div class="alert">@_formErrorMessage</div>
+}
+
+<div class="card form-card">
+    <h2>Карточка товара</h2>
+    <div class="form-grid">
+        <div>
+            <div class="filter-label">Артикул (SKU) *</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.Article))" @bind="_form.Article" />
+            <FieldError Field="@nameof(CreateProductCommand.Article)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Наименование *</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.Name))" @bind="_form.Name" />
+            <FieldError Field="@nameof(CreateProductCommand.Name)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Категория *</div>
+            <select class="input @Invalid(nameof(CreateProductCommand.CategoryId))" @bind="_form.CategoryId">
+                <option value="">Выберите категорию</option>
+                @foreach (var category in _categories)
+                {
+                    <option value="@category.Id">@category.Name</option>
+                }
+            </select>
+            <FieldError Field="@nameof(CreateProductCommand.CategoryId)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Производитель *</div>
+            <select class="input @Invalid(nameof(CreateProductCommand.ManufacturerId))" @bind="_form.ManufacturerId">
+                <option value="">Выберите производителя</option>
+                @foreach (var manufacturer in _manufacturers)
+                {
+                    <option value="@manufacturer.Id">@manufacturer.Name</option>
+                }
+            </select>
+            <FieldError Field="@nameof(CreateProductCommand.ManufacturerId)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Цена, ₽ *</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.Price))" type="number" min="0" step="0.01" @bind="_form.Price" />
+            <FieldError Field="@nameof(CreateProductCommand.Price)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Начальный остаток, шт.</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.InitialQuantity))" type="number" min="0" @bind="_form.InitialQuantity" />
+            <FieldError Field="@nameof(CreateProductCommand.InitialQuantity)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Гарантия, месяцев *</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.WarrantyMonths))" type="number" min="0" @bind="_form.WarrantyMonths" />
+            <FieldError Field="@nameof(CreateProductCommand.WarrantyMonths)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Срок годности, месяцев *</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.ShelfLifeMonths))" type="number" min="1" @bind="_form.ShelfLifeMonths" />
+            <FieldError Field="@nameof(CreateProductCommand.ShelfLifeMonths)" Errors="_fieldErrors" />
+        </div>
+        <div class="span-2">
+            <div class="filter-label">Условия хранения</div>
+            <input class="input" placeholder="Например: +5…+40 °C, сухо" @bind="_form.StorageConditions" />
+        </div>
+    </div>
+
+    <h2>Регистрационное удостоверение или сертификат</h2>
+    <div class="form-grid">
+        <div>
+            <div class="filter-label">Вид документа</div>
+            <select class="input" @bind="_certificateTypeText">
+                <option value="">Не прикреплять</option>
+                <option value="RegistrationCertificate">Регистрационное удостоверение</option>
+                <option value="ConformityCertificate">Сертификат соответствия</option>
+                <option value="Declaration">Декларация</option>
+            </select>
+        </div>
+        <div>
+            <div class="filter-label">Номер документа</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.CertificateNumber))" @bind="_form.CertificateNumber" />
+            <FieldError Field="@nameof(CreateProductCommand.CertificateNumber)" Errors="_fieldErrors" />
+        </div>
+        <div>
+            <div class="filter-label">Дата выдачи</div>
+            <input class="input @Invalid(nameof(CreateProductCommand.CertificateIssuedAt))" type="date" @bind="_certificateIssuedAt" />
+            <FieldError Field="@nameof(CreateProductCommand.CertificateIssuedAt)" Errors="_fieldErrors" />
+        </div>
+    </div>
+
+    <div class="row buttons">
+        <a class="btn btn-outline" href="/">Отмена</a>
+        <button class="btn btn-primary" @onclick="SaveProductAsync">Сохранить товар</button>
+    </div>
+</div>
+
+@code {
+    /// <summary>Данные полей формы в том виде, в котором их показывают элементы ввода.</summary>
+    private sealed class ProductFormModel
+    {
+        public string Article { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public int? CategoryId { get; set; }
+        public int? ManufacturerId { get; set; }
+        public decimal? Price { get; set; }
+        public int? InitialQuantity { get; set; } = 0;
+        public int? WarrantyMonths { get; set; } = 12;
+        public int? ShelfLifeMonths { get; set; } = 36;
+        public string? StorageConditions { get; set; }
+        public string? CertificateNumber { get; set; }
+    }
+
+    /// <summary>Состояние входа текущего пользователя, передаётся из каскадного провайдера.</summary>
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private readonly ProductFormModel _form = new();
+    private IReadOnlyList<SelectItem> _categories = [];
+    private IReadOnlyList<SelectItem> _manufacturers = [];
+    private string _certificateTypeText = string.Empty;
+    private DateOnly? _certificateIssuedAt;
+    private Dictionary<string, string> _fieldErrors = new();
+    private string? _formErrorMessage;
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await Catalog.GetCategoriesAsync();
+        _manufacturers = await Catalog.GetManufacturersAsync();
+    }
+
+    private string Invalid(string fieldName) => _fieldErrors.ContainsKey(fieldName) ? "input-error" : string.Empty;
+
+    /// <summary>Переводит значения полей формы в команду сервиса. Пустые числа заменяются значениями, которые сервис отвергнет.</summary>
+    private CreateProductCommand BuildCommand()
+    {
+        CertificateType? certificateType = Enum.TryParse<CertificateType>(_certificateTypeText, out var parsedType)
+            ? parsedType
+            : null;
+
+        DateOnly? issuedAt = _certificateIssuedAt;
+
+        return new CreateProductCommand(
+            _form.Article,
+            _form.Name,
+            _form.CategoryId ?? 0,
+            _form.ManufacturerId ?? 0,
+            _form.Price ?? 0m,
+            _form.WarrantyMonths ?? -1,
+            _form.ShelfLifeMonths ?? 0,
+            _form.StorageConditions,
+            _form.InitialQuantity ?? 0,
+            certificateType,
+            _form.CertificateNumber,
+            issuedAt);
+    }
+
+    private async Task SaveProductAsync()
+    {
+        _fieldErrors = new Dictionary<string, string>();
+        _formErrorMessage = null;
+
+        try
+        {
+            var userId = (await AuthenticationStateTask!).User.GetUserId();
+            var article = await Products.CreateProductAsync(BuildCommand(), userId);
+            Navigation.NavigateTo($"/?search={Uri.EscapeDataString(article)}");
+        }
+        catch (FormValidationException exception)
+        {
+            _fieldErrors = new Dictionary<string, string>(exception.FieldErrors);
+            _formErrorMessage = "Исправьте выделенные поля и повторите сохранение.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Не удалось сохранить товар");
+            _formErrorMessage = "Не удалось сохранить товар. Проверьте подключение к базе данных.";
+        }
+    }
+}

@@ -1,18 +1,21 @@
 @inherits LayoutComponentBase
-@inject NavigationManager Navigation
 
 <header class="topbar">
     <a class="brand" href="/">
         <span class="brand-mark">+</span>
         <span>МедЗаказ</span>
     </a>
-    <form class="search" @onsubmit="OpenSearchResults" @onsubmit:preventDefault>
-        <input type="search" placeholder="Поиск по названию или артикулу"
-               @bind="_searchText" @bind:event="oninput" />
+    <form class="search" method="get" action="/">
+        <input type="search" name="search" placeholder="Поиск по названию или артикулу" />
+        <button class="search-btn" type="submit" aria-label="Найти">🔍</button>
     </form>
     <AuthorizeView>
         <Authorized>
             <div class="user-block">
+                @if (context.User.IsInRole(RoleNames.Manager))
+                {
+                    <a class="link" href="/manager/products/new">Добавить товар</a>
+                }
                 <span class="user">@context.User.GetFullName() · @context.User.GetRoleName()</span>
                 <form method="post" action="/account/logout" class="logout">
                     <AntiforgeryToken />
@@ -30,15 +33,3 @@
     @Body
 </main>
 
-@code {
-    private string? _searchText;
-
-    /// <summary>Открывает каталог с результатами поиска из строки в шапке.</summary>
-    private void OpenSearchResults()
-    {
-        var target = string.IsNullOrWhiteSpace(_searchText)
-            ? "/"
-            : $"/?search={Uri.EscapeDataString(_searchText.Trim())}";
-        Navigation.NavigateTo(target);
-    }
-}

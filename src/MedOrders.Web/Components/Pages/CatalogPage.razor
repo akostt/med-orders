@@ -46,7 +46,7 @@
         <h1>Каталог товаров</h1>
         <div class="subtitle-row">
             <span class="muted">@_subtitle</span>
-            <select class="input sort" @bind="_draftSortOrder">
+            <select class="input sort" @bind="_draftSortOrder" @bind:after="ApplyFiltersAsync">
                 <option value="ByName">Сортировка: по названию</option>
                 <option value="PriceAscending">Сортировка: по цене ↑</option>
                 <option value="PriceDescending">Сортировка: по цене ↓</option>
